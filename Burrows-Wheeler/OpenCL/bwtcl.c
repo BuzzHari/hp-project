@@ -90,6 +90,8 @@ static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_f
     cl_mem d_inf;
     cl_mem d_outf;
 
+    cl_mem rotationIdx; //: 
+
     cl_platform_id cpPlatform;
     cl_device_id device_id;
     cl_context context;
@@ -100,7 +102,7 @@ static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_f
 
     size_t bytes = sizeof(FIFO) * no_of_blocks;
     size_t global_size;
-    size_t local_size = 1;
+    size_t local_size = 128;
     printf("NO_of_blocks: %d\n", no_of_blocks);
     global_size = no_of_blocks * local_size;
     printf("Global Size: %lu\n", global_size);
