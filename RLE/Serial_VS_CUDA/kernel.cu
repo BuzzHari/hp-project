@@ -32,10 +32,10 @@ int* d_compactedBackwardMask;
 
 const int NUM_TESTS = 4;
 const int Tests[NUM_TESTS] = {
-    50000, // 50K
-    500000, // 500K
-    5000000, // 5M
-    40000000, // 40M
+    8388608,
+    16777216,
+    33554432, // 32MB
+    67108864 // 64MB
 };
 
 const int PROFILING_TESTS = 1;
@@ -330,8 +330,8 @@ int main(){
         data[z] = generateCompressibleRandomData(Tests[z]);
     }
 
-    std::cout << "\033[1;31mProfile CPU\033[0m\n";
-    profileCpu(rleCpu, data);
+    /* std::cout << "\033[1;31mProfile CPU\033[0m\n"; */
+    /* profileCpu(rleCpu, data); */
 
 
 
