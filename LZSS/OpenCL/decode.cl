@@ -55,7 +55,7 @@ __kernel void DecodeLZSS(__global struct FIFO *infifo, __global struct FIFO *out
             len_out = 0;
 
             outfifo[id].id = id;
-            while (1)
+            while (true)
             {
                 flags >>= 1;
                 flagsUsed++;

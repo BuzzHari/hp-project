@@ -38,6 +38,8 @@ int EncodeLZSS(FILE *fpIn, FILE *fpOut)
     }
     int bsize = BLOCKSIZE;
     int no_of_blocks = ceil((float)totalSize /(float)bsize);
+    char cblocks[10];
+    sprintf(cblocks, "%d",no_of_blocks);
     int padding = totalSize % bsize;
     padding = (padding) ? (bsize - padding) : 0;
     printf("Num of blocks %d\nBuffer size %d\nTotal Size %ld\n", no_of_blocks, bsize, totalSize);
@@ -68,14 +70,30 @@ int EncodeLZSS(FILE *fpIn, FILE *fpOut)
     printf("\nCalling Kernel\n");
     callKernel(infifo, outfifo, no_of_blocks, "encode.cl", "EncodeLZSS");
     printf("Kernel Completed\n");
-
     // write to file
-    fputc((char)no_of_blocks, fpOut);
+    //putc((char)no_of_blocks, fpOut);
+    int int_len = strlen(cblocks);
+    int str_len = 0;
+    char temp[8];
+    putc((char)int_len,fpOut);
+    fwrite(cblocks,1, int_len, fpOut);
     for(int i=0; i<no_of_blocks; i++)
     {
         printf("%d ", outfifo[i].len);
+        //putc((char)outfifo[i].len, fpOut);
+        sprintf(temp, "%d",outfifo[i].len);
+        str_len = strlen(temp);
+        putc((char)str_len,fpOut);
+        fwrite(temp, 1, str_len, fpOut);
+        if(i == 0)
+        {
+            printf("Characters written to file are\n");
+            for(int k=0;k<10;k++){
+                printf("%c=%d ", outfifo[i].string[k],outfifo[i].string[k]);
+            }
+            printf("\n");
+        }
         fwrite(outfifo[i].string, 1, outfifo[i].len, fpOut);
-        fputc((char)0x1D, fpOut);
     }
     printf("\nWrite to file completed\n");
     // free memory
@@ -98,30 +116,35 @@ int DecodeLZSS(FILE *fpIn, FILE *fpOut)
     fseek(fpIn, 0, SEEK_SET);
 
     // get the total no of blocks used from the first character of the compressed string
-    int no_of_blocks = (int) fgetc(fpIn);
-    printf("No of blocks %d\n", no_of_blocks);
+    int int_len = (int) getc(fpIn);
+    char cblocks[10];
+    fread(cblocks,1,int_len, fpIn);
+    int no_of_blocks = atoi(cblocks);
+    printf("No of blocks %d\ntotalSize %ld\n", no_of_blocks, totalSize);
     infifo = (FIFO *)malloc(sizeof(FIFO) * no_of_blocks);
     outfifo = (FIFO *)malloc(sizeof(FIFO) * no_of_blocks);
 
     int block_no = 0;
-    int len_str = 0;
     int c;
-    printf("Reading file\n");
-    while((c = fgetc(fpIn)) == EOF)
+    //printf("Reading file\n");
+    //long totalchars = 0;
+    char temp[8];
+    int length = 0;
+    while(block_no < no_of_blocks)
     {
-        if( c == 0x1D)
-        {
-            infifo[block_no].id = block_no;
-            infifo[block_no].len = len_str;
-            printf("%d ", infifo[block_no].len);
-            block_no++;
-            len_str = 0;            
-        } else
-        {
-            infifo[block_no].string[len_str++] = c;
-        }        
+        c = (int) getc(fpIn);
+        //printf("%d=", c);
+        fread(temp, 1, c, fpIn);
+        temp[c] = '\0';
+        length = atoi(temp);
+        //printf("%d ", length);
+        fread(infifo[block_no].string, 1, length, fpIn);
+        infifo[block_no].len = length;
+        infifo[block_no].id = block_no;
+        block_no++;    
     }
-    printf("\nfile read completed with blocks %d\n", block_no);
+    //printf("\nTotal characters read %ld\n", totalchars);
+    //printf("\nfile read completed with blocks %d\n", block_no);
     if(block_no != no_of_blocks)
     {
         printf("Some error occurred during Compression\n");
@@ -149,7 +172,7 @@ void callKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_filename
     FILE *fp;
     char *source_str;
     size_t source_size;
-    printf("Filename %s\nKernelname %s\n",cl_filename,cl_kernelname);
+    //printf("Filename %s\nKernelname %s\n",cl_filename,cl_kernelname);
 
     fp = fopen(cl_filename, "r");
     if (!fp)

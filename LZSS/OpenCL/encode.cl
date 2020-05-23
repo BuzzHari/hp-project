@@ -98,7 +98,7 @@ __kernel void EncodeLZSS(__global struct FIFO *infifo, __global struct FIFO *out
             //printf("group size %d\n", group_size);
             //printf("1%c1%c2%s",slidingWindow[0], slidingWindow[1], slidingWindow);
             /* 8 code flags and encoded strings */
-            printf("Thread %d\nInp len %d\n",id,infifo[id].len);
+            //printf("Thread %d\nInp len %d\n",id,infifo[id].len);
             unsigned char encodedData[16];
             unsigned char flags = 0;
             unsigned char flagPos = 0x01;
@@ -167,11 +167,13 @@ __kernel void EncodeLZSS(__global struct FIFO *infifo, __global struct FIFO *out
                         /* we have 8 code flags, write out flags and code buffer */
                         //putc(flags, outFile);
                         outfifo[id].string[len_out++] = flags;
+                        if(len_out < 12 && id == 0) printf("%c=%d(fl) ",flags,flags);
                         for (i = 0; i < nextEncoded; i++)
                         {
                             /* send at most 8 units of code together */
                             //putc(encodedData[i], outFile);
                             outfifo[id].string[len_out++] = encodedData[i];
+                            if(len_out < 12 && id == 0) printf("%c=%d(ed) ",encodedData[i],encodedData[i]);
                         }
                         /* reset encoded data buffer */
                         flags = 0;
@@ -222,10 +224,12 @@ __kernel void EncodeLZSS(__global struct FIFO *infifo, __global struct FIFO *out
                 {
                     //putc(flags, outFile);
                     outfifo[id].string[len_out++] = flags;
+                    if(len_out < 12 && id == 0) printf("%c=%d(flag) ",flags,flags);
                     for (i = 0; i < nextEncoded; i++)
                     {
                         //putc(encodedData[i], outFile);
                         outfifo[id].string[len_out++] = encodedData[i];
+                        if(len_out < 12 && id == 0) printf("%c=%d(ed) ",encodedData[i],encodedData[i]);
                     }
                 }
                 outfifo[id].len = len_out;
