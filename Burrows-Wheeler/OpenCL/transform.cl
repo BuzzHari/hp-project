@@ -1,134 +1,126 @@
+//#pragma OPENCL EXTENSION cl_khr_initialize_memory : enable
+
 
 //#define BLOCK_SIZE 1048576
-#define BLOCK_SIZE 4*1024 
+//#define BLOCK_SIZE 4*1024 
+#define BLOCK_SIZE 16 // 16 bytes for testing purpose. 
 #define UCHAR_MAX 255
 #define Wrap(value, limit) (((value) < (limit)) ? (value) : ((value) - (limit)))
 
 struct __attribute__((packed)) FIFO {
     int id;
     int len;
+    unsigned int rotationIdx[BLOCK_SIZE];
+    unsigned int v[BLOCK_SIZE];
     char block[BLOCK_SIZE];
 };
 
 
-__kernel void BwTransform(__global struct FIFO *infifo,
-                          __global struct FIFO *outfifo,
-                          __global unsigned int *rotationIdx,
-                          __global unsigned int *v,
-                          __global unsigned char *last,
+struct __attribute__((packed)) LAST {
+    int s0Idx;
+    unsigned char last[BLOCK_SIZE];
+};
+
+__kernel void BwTransform(__global struct FIFO *inf,
+                          __global struct FIFO *outf,
                           const unsigned int num_of_blocks)
 {
-    //Getting ID of one of the data blocks. 
-    int id = get_global_id(0);
-    int oset = id * BLOCK_SIZE;
-    //Idea is to transform this block and store it back.
-    if(id < num_of_blocks) {
-        printf("ID: %d\n", id); 
-        unsigned int i, j, k;
-        unsigned int *rotationIdx; // index of first char in rotation.
-        unsigned int *v;           // index fo radix sorted characters
-        int s0Idx;                 // index of S0 in rotations.
-        unsigned char *last;       // last characters from sorted rotations.
-
-        unsigned int counters[256]; // counters and offsets
-        unsigned int offsetTable[256]; // for radix sorting with characters.
-         
-        ;//Have to implement Heap for this?! 
-        ;//rotationIdx = (unsigned int *) malloc(BLOCK_SIZE * sizeof(unsigned int));
-        ;// Might need two kernels.
-        ;// One to create the rotated data,
-        ;// This rotated data will be passed to CPU.
-        ;// The I sort it. then pass it back to another kernel
-        ;// to get the final transformation.
-
-        ;// Another idea, instead of CPU sort, I'll have
-        ;// implement GPU sort.
-
-        // Counting number fo characters for radix sort.
-        
-        for(i = 0; i < infifo[id].len; ++i) {
-           counters[infifo[id].block[i]]++;
-           //if(id ==1 )
-           // printf("%d ",counters[infifo[id].block[i]]);
-        }
+    //Note to self: Kernel shall fail if the input file exceds over 100MB.
     
-        //if(id ==1 )
-        //  printf("\n");
+    //Getting ID of one of the data blocks. 
+    int gid = get_global_id(0);
+    //int oset = id * BLOCK_SIZE;
+    //Idea is to transform this block and store it back.
+    if(gid < num_of_blocks) {
+        printf("ID: %d\n", gid); 
+        //outf[gid].block[0] =inf[gid].block[0];
+        //printf("%c\n", inf[gid].block[0]);
+        //printf("%c\n", outf[gid].block[0]);
+        
+        __private unsigned int i, j, k; 
+        int s0Idx;
+        unsigned int counters[256] = { 0 };
+        unsigned int offsetTable[256] = { 0 };
 
+        int blockSize = inf[gid].len;
+        printf("blockSize %d\n", blockSize);
+
+
+        //...Causing junk values.
+
+        //#pragma unroll 4  
+        for(i=0; i<256; i++) {
+            counters[i] = 0;
+            offsetTable[i] = 0;
+        }
+        
+        for(i=0; i<blockSize; ++i) {
+            counters[inf[gid].block[i]]++;
+        }
+        
+        offsetTable[0] = 0;
+    
+
+        // Sort on 2nd character.
+        //#pragma unroll 4  
+        for(i=1; i<256; ++i) {
+            offsetTable[i] = offsetTable[i-1] + counters[i-1];
+        }
+        
+        //#pragma unroll 4  
+        for(i=0; i<blockSize-1; ++i) {
+            printf("%c\n", inf[gid].block[1]);
+            j = inf[gid].block[i+1];
+            printf("offsetTable[j]: %d\n", offsetTable[j]);
+            inf[gid].v[offsetTable[j]] = i;
+            printf("v[offsetTable[j]]: %d\n",inf[gid].v[offsetTable[j]]);
+            offsetTable[j] = offsetTable[j] + 1;
+        }
+
+        // Handle wrap for string starting at end of block.
+        j = inf[gid].block[0];
+        inf[gid].v[offsetTable[j]] = i;
         offsetTable[0] = 0;
 
-        for(i = 1; i < 256; ++i) {
-              // determine number of values before those sorted under i.
-
-            printf("ID:%d | Test: 4\n", id);
+        // Radix sort on first chracter.
+        //#pragma unroll 4
+        for(i=1; i<256; ++i) {
             offsetTable[i] = offsetTable[i-1] + counters[i-1];
         }
 
-        // Sort on 2nd character.
-        //#pragma unroll
-        printf("infifo[id].len: %d", infifo[id].len);
-        for(i = 0; i < infifo[id].len; ++i) 
-        {
-           printf("ID:%d | Test: 3\n", id);
-           j = infifo[id].block[i + 1];     
-           printf("J: %d\n", j);
-           printf("%d\n", oset + offsetTable[j]);
-           v[oset + offsetTable[j]] = i;
-           printf("V:%d\n", v[oset + offsetTable[j]]);
-           v[oset + offsetTable[j]] = v[oset + offsetTable[j]] + 1;
-        }
-
-        // Handling wrap around.
-        j = infifo[id].block[0];
-        v[oset + offsetTable[j]] = i;
-        offsetTable[0] = 0;
-        printf("Test: 2\n");
-        // Radix sort on first charcter in rotation.
-
-        for(i = 1; i < 256; ++i){
-              printf("Test: 1\n");
-              offsetTable[i] = offsetTable[i-1] + counters[i-1];
-        }
-        
-        for(i = 0; i < infifo[id].len; ++i) {
-           j = v[oset + i];     
-           j = infifo[id].block[j];
-           rotationIdx[oset + offsetTable[j]] = v[oset + i];
-           printf("Test\n");
-           printf("%u",rotationIdx[oset + offsetTable[j]]);
-           offsetTable[j] = offsetTable[j] + 1;  
-        }
-
-        for (i = 0, k = 0; (i <= UCHAR_MAX) && (k < (infifo[id].len - 1)); i++)
-        {
-            for (j = 0; (j <= UCHAR_MAX) && (k < (infifo[id].len - 1)); j++)
-            {
-                unsigned int first = k;
-
-                /* count strings starting with ij */
-                while ((i == infifo[id].block[rotationIdx[oset + k]]) &&
-                    (j == infifo[id].block[Wrap(rotationIdx[oset + k] + 1,  infifo[id].len)]))
-                {
-                    k++;
-
-                    if (k == infifo[id].len)
-                    {
-                        /* we've searched the whole block */
-                        break;
-                    }
-                }
-                //printf("%d",rotationIdx[oset + first]);
-               
-                //if (k - first > 1)
-                //{
-                //    /* there are at least 2 strings staring with ij, sort them */
-                //    //qsort(&rotationIdx[oset + first], k - first, sizeof(int),
-                //    //    ComparePresorted);
-                //}*/
-            }
+        //#pragma unroll 4
+        for(i = 0; i < blockSize; ++i) {
+            j = inf[gid].v[i];
+            j = inf[gid].block[j];
+            printf("offsetTable[j]: %d\n", offsetTable[j]);
+            inf[gid].rotationIdx[offsetTable[j]] = inf[gid].v[i];
+            printf("rotationIdx[offsetTable[j]]: %d\n",inf[gid].rotationIdx[offsetTable[j]]);
+            offsetTable[j] = offsetTable[j] + 1;
         }
     }
 }
     
+__kernel void BwLast(__global struct FIFO *inf,
+                     __global struct LAST *last
+                    const unsigned int num_of_blocks) 
+{
+    
+    int gid = get_global_id(0);
 
+    if (gid < num_of_blocks) {
+        unsigned int i, j;
+        unsigned int blockSize = inf[gid].len; 
+        last[gid].s0Idx = 0;
+
+        for (i = 0; i < blockSize; ++i) {
+            j = inf[gid].rotationIdx[i]; 
+            if (j != 0)
+                last[gid].last[i] = inf[gid].block[j-1];
+            else {
+                s0Idx = i;
+                last[i] = inf[gid].block[blockSize-1];
+            }
+        }
+    }
+}
 
