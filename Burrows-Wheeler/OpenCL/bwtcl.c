@@ -2,11 +2,13 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <math.h>
+#include <string.h>
 #include <CL/opencl.h>
 #include "bwtcl.h"
 
 
-#define BLOCKSIZE 1048576 // 1MB
+//#define BLOCKSIZE 1048576 // 1MB
+#define BLOCKSIZE 4*1024
 #define MINSIZE 1048576
 #define MAX_SOURCE_SIZE 1024*1024 
 
@@ -90,7 +92,9 @@ static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_f
     cl_mem d_inf;
     cl_mem d_outf;
 
-    cl_mem rotationIdx; //: 
+    cl_mem rotationIdx; // Index of first char in rotation.
+    cl_mem v;           // Index of radix sorted characters.
+    cl_mem last;        // last characters from sorted rotations.
 
     cl_platform_id cpPlatform;
     cl_device_id device_id;
@@ -140,8 +144,11 @@ static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_f
         printf("Error Code: %d\n", err);
         return;
     }
-
-    err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+    
+    //char *options = (char*)malloc(sizeof(char)*10);
+    //strcpy( options, "-g");
+    
+    err = clBuildProgram(program, 0, NULL,NULL, NULL, NULL);
      if(err != CL_SUCCESS) {
         perror("Problem building program executable.\n");
         printf("Error Code: %d\n", err);
@@ -171,21 +178,50 @@ static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_f
     }
     
     d_outf = clCreateBuffer(context, CL_MEM_READ_WRITE, bytes, NULL, &err);
-
     if(err != CL_SUCCESS) {
-        perror("Problem creating buffer d_inf.\n");
+        perror("Problem creating buffer d_outf.\n");
         printf("Error Code: %d\n", err);
         return;
     }
+
+    rotationIdx = clCreateBuffer(context, CL_MEM_READ_WRITE,
+            BLOCKSIZE*sizeof(unsigned int)*no_of_blocks, NULL, &err);
+    if(err != CL_SUCCESS) {
+        perror("Problem creating buffer rotationIdx\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+
+    v = clCreateBuffer(context, CL_MEM_READ_WRITE,
+            BLOCKSIZE*sizeof(unsigned int)*no_of_blocks, NULL, &err);
+    if(err != CL_SUCCESS) {
+        perror("Problem creating buffer v\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+
+    last = clCreateBuffer(context, CL_MEM_READ_WRITE,
+            BLOCKSIZE*sizeof(unsigned char)*no_of_blocks, NULL, &err);
+    if(err != CL_SUCCESS) {
+        perror("Problem creating buffer last\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+
     err = clEnqueueWriteBuffer(queue, d_inf, CL_TRUE, 0, bytes, infifo, 0, NULL, NULL);
     if(err != CL_SUCCESS) {
         perror("Problem enqueing writes.\n");
         return;
     }
 
+
     err  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &d_inf);
     err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &d_outf);
-    err |= clSetKernelArg(kernel, 2, sizeof(int), &no_of_blocks);
+    err |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &rotationIdx);
+    err |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &v);
+    err |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &last);
+    err |= clSetKernelArg(kernel, 5, sizeof(int), &no_of_blocks);
     if(err != CL_SUCCESS) {
         perror("Problem setting arguments.\n");
         printf("Error Code: %d\n", err);
