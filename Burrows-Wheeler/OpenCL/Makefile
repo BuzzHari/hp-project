@@ -1,19 +1,22 @@
 all: sample
 
 run: 
-	./sample -c -i ../../testdata/world192.txt -o out.txt
+	./sample -c -i $(FILE) -o out.txt
+
+gdb-run: 
+	gdb ./sample -c -i ../../testdata/world192.txt 
 
 sample: sample.o bwtcl.o optlist.o
-	gcc -o sample $^ -lOpenCL -lm
+	gcc -g -o sample $^ -lOpenCL -lm
 
 sample.o: sample.c bwtcl.h optlist.h
-	gcc -c $<
+	gcc -c -g $<
 
 bwtcl.o: bwtcl.c transform.cl
-	gcc -c $< -lOpenCL -lm 
+	gcc -c -g $< -lOpenCL -lm 
 
 optlist.o: optlist.c optlist.h
-	gcc -c $<
+	gcc -c -g $<
 
 clean:
 	rm -f *.o

@@ -2,8 +2,10 @@
 
 
 //#define BLOCK_SIZE 1048576
-//#define BLOCK_SIZE 4*1024 
-#define BLOCK_SIZE 16 // 16 bytes for testing purpose. 
+//#define BLOCK_SIZE 4096 
+//#define BLOCK_SIZE 4096 
+#define BLOCK_SIZE 2048 
+//#define BLOCK_SIZE 16 // 16 bytes for testing purpose. 
 #define UCHAR_MAX 255
 #define Wrap(value, limit) (((value) < (limit)) ? (value) : ((value) - (limit)))
 
@@ -22,7 +24,6 @@ struct __attribute__((packed)) LAST {
 };
 
 __kernel void BwTransform(__global struct FIFO *inf,
-                          __global struct FIFO *outf,
                           const unsigned int num_of_blocks)
 {
     //Note to self: Kernel shall fail if the input file exceds over 100MB.
@@ -32,10 +33,8 @@ __kernel void BwTransform(__global struct FIFO *inf,
     //int oset = id * BLOCK_SIZE;
     //Idea is to transform this block and store it back.
     if(gid < num_of_blocks) {
-        printf("ID: %d\n", gid); 
-        //outf[gid].block[0] =inf[gid].block[0];
+        //printf("ID: %d\n", gid); 
         //printf("%c\n", inf[gid].block[0]);
-        //printf("%c\n", outf[gid].block[0]);
         
         __private unsigned int i, j, k; 
         int s0Idx;
@@ -43,7 +42,7 @@ __kernel void BwTransform(__global struct FIFO *inf,
         unsigned int offsetTable[256] = { 0 };
 
         int blockSize = inf[gid].len;
-        printf("blockSize %d\n", blockSize);
+        //printf("blockSize %d: %d\n", blockSize, gid);
 
 
         //...Causing junk values.
@@ -69,11 +68,11 @@ __kernel void BwTransform(__global struct FIFO *inf,
         
         //#pragma unroll 4  
         for(i=0; i<blockSize-1; ++i) {
-            printf("%c\n", inf[gid].block[1]);
+            //printf("%c\n", inf[gid].block[1]);
             j = inf[gid].block[i+1];
-            printf("offsetTable[j]: %d\n", offsetTable[j]);
+            //printf("offsetTable[j]: %d\n", offsetTable[j]);
             inf[gid].v[offsetTable[j]] = i;
-            printf("v[offsetTable[j]]: %d\n",inf[gid].v[offsetTable[j]]);
+            //printf("v[offsetTable[j]]: %d\n",inf[gid].v[offsetTable[j]]);
             offsetTable[j] = offsetTable[j] + 1;
         }
 
@@ -92,16 +91,16 @@ __kernel void BwTransform(__global struct FIFO *inf,
         for(i = 0; i < blockSize; ++i) {
             j = inf[gid].v[i];
             j = inf[gid].block[j];
-            printf("offsetTable[j]: %d\n", offsetTable[j]);
+            //printf("offsetTable[j]: %d\n", offsetTable[j]);
             inf[gid].rotationIdx[offsetTable[j]] = inf[gid].v[i];
-            printf("rotationIdx[offsetTable[j]]: %d\n",inf[gid].rotationIdx[offsetTable[j]]);
+            //printf("rotationIdx[offsetTable[j]]: %d\n",inf[gid].rotationIdx[offsetTable[j]]);
             offsetTable[j] = offsetTable[j] + 1;
         }
     }
 }
     
 __kernel void BwLast(__global struct FIFO *inf,
-                     __global struct LAST *last
+                     __global struct LAST *last,
                     const unsigned int num_of_blocks) 
 {
     
@@ -117,8 +116,8 @@ __kernel void BwLast(__global struct FIFO *inf,
             if (j != 0)
                 last[gid].last[i] = inf[gid].block[j-1];
             else {
-                s0Idx = i;
-                last[i] = inf[gid].block[blockSize-1];
+                last[gid].s0Idx = i;
+                last[gid].last[i] = inf[gid].block[blockSize-1];
             }
         }
     }

@@ -11,9 +11,13 @@
 
 //#define BLOCK_SIZE 1048576 // 1MB
 //#define BLOCK_SIZE 4096 // 4KB 
-#define BLOCK_SIZE 16 // 16 bytes. For testing. 
+#define BLOCK_SIZE 2048 // 4KB 
+//#define BLOCK_SIZE 102400// 4KB 
+//#define BLOCK_SIZE 16 // 16 bytes. For testing. 
 #define MIN_SIZE 1048576
 #define MAX_SOURCE_SIZE 1024*1024 
+
+#define LOCAL_SIZE 512 
 
 #define Wrap(value, limit) (((value) < (limit)) ? (value) : ((value) - (limit)))
 
@@ -84,7 +88,12 @@ static int ComparePresorted(const void *s1, const void *s2, void *blck)
     return 0;
 }
 
-static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_filename, char* cl_kernelname);
+
+static void CallTransformKernel(cl_kernel kernel, FIFO *infifo, FIFO *outfifo, int no_of_blocks);
+
+static cl_kernel CreateKernel(char* cl_filename, char* cl_kernelname);
+
+static void CallLastKernel(cl_kernel kernel, FIFO *outfifo, LAST *last, int no_of_blocks); 
 
 int BwtTransform(FILE *fpIn, FILE *fpOut) {
 
@@ -119,23 +128,23 @@ int BwtTransform(FILE *fpIn, FILE *fpOut) {
     }
         
     outfifo = (FIFO*) malloc(sizeof(FIFO)*no_of_blocks);
-    if(!infifo) {
+    if(!outfifo) {
         printf("Outfifo: Malloc Error\n");
         exit(0);
     }
 
     last = (LAST*) malloc(sizeof(LAST)*no_of_blocks);
-    if(!infifo) {
+    if(!last) {
         printf("Last: Malloc Error\n");
         exit(0);
     }
    
-    for (int i = 0; i < 1; ++i) {
+    for (int i = 0; i < no_of_blocks; ++i) {
         
         infifo[i].id = i;
         int result = fread(infifo[i].block, 1, bsize, fpIn);
-        printf("Block %d: Size Read %d\n", i, result);
-        printf("Text: %c\n", infifo[i].block[14]);
+        //printf("Block %d: Size Read %d\n", i, result);
+        //printf("Text: %c\n", infifo[i].block[14]);
         if(result != bsize && i != no_of_blocks-1){
             printf("Reading error\n");
             free(infifo);
@@ -145,12 +154,21 @@ int BwtTransform(FILE *fpIn, FILE *fpOut) {
         infifo[i].len = result;
     }
 
-    CallKernel(infifo, outfifo, no_of_blocks, "transform.cl", "BwTransform"); 
+    cl_kernel kernel = CreateKernel("transform.cl", "BwTransform");
 
-    for (int i = 0; i < no_of_blocks; ++i) {
-        for (int j=0; j < outfifo[i].len; ++j)
-            printf("rotationIdx[%d]: %d\n", j, outfifo[i].rotationIdx[j]);
+    if(!kernel) {
+        printf("Something went wrong in creating the kernel\n");
+        exit(0);
     }
+
+    CallTransformKernel(kernel, infifo, outfifo, no_of_blocks); 
+
+    /*
+     *for (int i = 0; i < no_of_blocks; ++i) {
+     *    for (int j=0; j < outfifo[i].len; ++j)
+     *        printf("rotationIdx[%d]: %d\n", j, outfifo[i].rotationIdx[j]);
+     *}
+     */
     
     // Not required anymore.
     free(infifo); 
@@ -180,25 +198,37 @@ int BwtTransform(FILE *fpIn, FILE *fpOut) {
         }
     }
     
-    printf("After sorting:\n");
-
-    for (int i = 0; i < no_of_blocks; ++i) {
-        for (int j=0; j < outfifo[i].len; ++j)
-            printf("rotationIdx[%d]: %d\n", j, outfifo[i].rotationIdx[j]);
-    }
+/*
+ *    printf("After sorting:\n");
+ *
+ *    for (int i = 0; i < no_of_blocks; ++i) {
+ *        for (int j=0; j < outfifo[i].len; ++j)
+ *            printf("rotationIdx[%d]: %d\n", j, outfifo[i].rotationIdx[j]);
+ *    }
+ */
 
     // Okay! It's sorted now. Time to get the last characters of the rotations.
     
-    //CallKernel(outfifo,last,no_of_blocks, "transform.cl", "BwLast"); 
+    kernel = CreateKernel("transform.cl", "BwLast");
+
+    CallLastKernel(kernel, outfifo, last, no_of_blocks); 
+
+    for (int i = 0; i < no_of_blocks; ++i) {
+        //printf("s0Idx: %d\n", last[i].s0Idx);
+        //for (int j=0; j < outfifo[i].len; ++j)
+            //printf("last[%d]: %c\n", j, last[i].last[j]);
+        
+        fwrite(&last[i].s0Idx, sizeof(int), 1, fpOut);
+        fwrite(last[i].last, sizeof(unsigned char), outfifo[i].len, fpOut);
+    }
+
+    free(outfifo);
+    free(last);
     return 0;
 }
 
 static cl_kernel CreateKernel(char* cl_filename, char* cl_kernelname) {
-}
-
-
-static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_filename, char* cl_kernelname) {
-
+    
     FILE *fp;
     char *kernel_source;
     size_t kernel_size;
@@ -214,8 +244,8 @@ static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_f
     kernel_size = fread(kernel_source, sizeof(char), MAX_SOURCE_SIZE, fp);
     fclose(fp);
 
-    cl_mem d_inf;
-    cl_mem d_outf;
+    //cl_mem d_inf;
+    //cl_mem d_outf;
 
     cl_platform_id cpPlatform;
     cl_device_id device_id;
@@ -225,28 +255,24 @@ static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_f
     cl_kernel kernel;
     cl_int err;
 
-    size_t bytes = sizeof(FIFO) * no_of_blocks;
-    printf("bytes: %lu\n", sizeof(FIFO) * no_of_blocks);
-
-    printf("%s", infifo[0].block);
-    size_t global_size;
-    //size_t local_size = 128;
-    size_t local_size = 1;
-    printf("No_of_blocks: %d\n", no_of_blocks);
-    global_size = no_of_blocks * local_size;
-    printf("Global Size: %lu\n", global_size);
+    /*size_t global_size;*/
+    /*//size_t local_size = 128;*/
+    /*size_t local_size = 1;*/
+    /*printf("No_of_blocks: %d\n", no_of_blocks);*/
+    /*global_size = no_of_blocks * local_size;*/
+    /*printf("Global Size: %lu\n", global_size);*/
     
     err = clGetPlatformIDs(1, &cpPlatform, NULL);
 
     if(err != CL_SUCCESS){
         perror("Couldn't get platforms\n");
-        return;
+        return NULL;
     }
     
     err = clGetDeviceIDs(cpPlatform, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
     if(err != CL_SUCCESS){
         perror("Couldn't get DeviceIDs \n");
-        return;
+        return NULL;
     }
 
     cl_context_properties properties[] = {CL_CONTEXT_PLATFORM,(cl_context_properties)cpPlatform,0};
@@ -255,14 +281,14 @@ static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_f
     if(err != CL_SUCCESS) {
         perror("Problem creating context\n");
         printf("Error Code: %d\n", err);
-        return;
+        return NULL;
     }
     
     queue = clCreateCommandQueueWithProperties(context, device_id, 0, &err);
     if(err != CL_SUCCESS) {
         perror("Problem creating command queue\n");
         printf("Error Code: %d\n", err);
-        return;
+        return NULL;
     }
 
     program = clCreateProgramWithSource(context, 1, (const char **) & kernel_source,
@@ -270,7 +296,7 @@ static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_f
     if(err != CL_SUCCESS) {
         perror("Problem creating program\n");
         printf("Error Code: %d\n", err);
-        return;
+        return NULL;
     }
     
     //char *options = (char*)malloc(sizeof(char)*10);
@@ -287,27 +313,76 @@ static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_f
             clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_siz, log, NULL);
             printf("%s\n", log);
         }
-        return;
+        return NULL;
      }
-
 
     kernel = clCreateKernel(program, cl_kernelname, &err);
     if(err != CL_SUCCESS) {
         perror("Problem creating kernel.\n");
         printf("Error Code: %d\n", err);
+        return NULL;
+    }
+
+    clReleaseCommandQueue(queue);
+    return kernel;
+}
+
+
+static void CallTransformKernel(cl_kernel kernel, FIFO *infifo, FIFO *outfifo, int no_of_blocks) {
+    
+
+    cl_mem d_inf;
+
+    cl_context context;
+    cl_command_queue queue;
+    cl_program program;
+    cl_device_id device_id;
+    cl_int err;
+
+    size_t bytes = sizeof(FIFO) * no_of_blocks;
+    printf("bytes: %lu\n", sizeof(FIFO) * no_of_blocks);
+
+    size_t global_size;
+    //size_t local_size = 128;
+    size_t local_size = LOCAL_SIZE;
+    printf("No_of_blocks: %d\n", no_of_blocks);
+    //global_size = no_of_blocks * local_size;
+    global_size = ceil((float)no_of_blocks / local_size) * local_size;
+    printf("Global Size: %lu\n", global_size);
+    
+
+    err = clGetKernelInfo(kernel,CL_KERNEL_CONTEXT, sizeof(cl_context), &context, NULL);
+    if(err != CL_SUCCESS) {
+        perror("Problem getting context\n");
+        printf("Error Code: %d\n", err);
         return;
     }
 
-    d_inf = clCreateBuffer(context, CL_MEM_READ_WRITE, bytes, NULL, &err);
+
+    err = clGetKernelInfo(kernel,CL_KERNEL_PROGRAM, sizeof(cl_program), &program, NULL);
     if(err != CL_SUCCESS) {
-        perror("Problem creating buffer d_inf.\n");
+        perror("Problem getting program\n");
         printf("Error Code: %d\n", err);
         return;
     }
     
-    d_outf = clCreateBuffer(context, CL_MEM_READ_WRITE, bytes, NULL, &err);
+    err = clGetProgramInfo(program, CL_PROGRAM_DEVICES, sizeof(cl_device_id), &device_id, NULL);
     if(err != CL_SUCCESS) {
-        perror("Problem creating buffer d_outf.\n");
+        perror("Problem getting deviceID\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+
+    queue = clCreateCommandQueueWithProperties(context, device_id, 0, &err);
+    if(err != CL_SUCCESS) {
+        perror("Problem creating command queue\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+    d_inf = clCreateBuffer(context, CL_MEM_READ_WRITE, bytes, NULL, &err);
+    if(err != CL_SUCCESS) {
+        perror("Problem creating buffer d_inf.\n");
         printf("Error Code: %d\n", err);
         return;
     }
@@ -319,11 +394,14 @@ static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_f
         return;
     }
 
-
     err  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &d_inf);
-    err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &d_outf);
-    err |= clSetKernelArg(kernel, 2, sizeof(unsigned int), &no_of_blocks);
+    if(err != CL_SUCCESS) {
+        perror("Problem setting arguments: 1\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
     
+    err |= clSetKernelArg(kernel, 1, sizeof(unsigned int), &no_of_blocks);
     if(err != CL_SUCCESS) {
         perror("Problem setting arguments\n");
         printf("Error Code: %d\n", err);
@@ -347,7 +425,128 @@ static void CallKernel(FIFO *infifo, FIFO *outfifo, int no_of_blocks, char* cl_f
     
     //FIFO *out = (FIFO*) malloc(sizeof(FIFO)*no_of_blocks);
     err = clEnqueueReadBuffer(queue, d_inf, CL_TRUE, 0, bytes, outfifo, 0, NULL,NULL);
-    printf("Err: %d\n",err);
+    //printf("Err: %d\n",err);
+    if(err != CL_SUCCESS) {
+        perror("Problem reading from buffer.\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+
+    // Now to quick sort on this data in main. 
+
+    clReleaseMemObject(d_inf);
+    clReleaseProgram(program);
+    clReleaseKernel(kernel);
+    clReleaseCommandQueue(queue);
+    clReleaseContext(context);
+}
+
+
+
+static void CallLastKernel(cl_kernel kernel, FIFO *infifo, LAST *last, int no_of_blocks) {
+    
+    cl_mem d_inf;
+    cl_mem d_outf;
+
+    cl_context context;
+    cl_command_queue queue;
+    cl_program program;
+    cl_device_id device_id;
+    cl_int err;
+
+    size_t bytes = sizeof(FIFO) * no_of_blocks;
+    size_t lbytes = sizeof(LAST) * no_of_blocks;
+    printf("bytes: %lu\n", bytes);
+    printf("lbytes: %lu\n", lbytes);
+    
+    size_t global_size;
+    size_t local_size = LOCAL_SIZE;
+    //size_t local_size = 1;
+    printf("No_of_blocks: %d\n", no_of_blocks);
+    //global_size = no_of_blocks * local_size;
+    global_size = ceil((float)no_of_blocks / local_size) * local_size;
+    printf("Global Size: %lu\n", global_size);
+    
+
+    err = clGetKernelInfo(kernel,CL_KERNEL_CONTEXT, sizeof(cl_context), &context, NULL);
+    if(err != CL_SUCCESS) {
+        perror("Problem getting context\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+
+
+    err = clGetKernelInfo(kernel,CL_KERNEL_PROGRAM, sizeof(cl_program), &program, NULL);
+    if(err != CL_SUCCESS) {
+        perror("Problem getting program\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+    err = clGetProgramInfo(program, CL_PROGRAM_DEVICES, sizeof(cl_device_id), &device_id, NULL);
+    if(err != CL_SUCCESS) {
+        perror("Problem getting deviceID\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+
+    queue = clCreateCommandQueueWithProperties(context, device_id, 0, &err);
+    if(err != CL_SUCCESS) {
+        perror("Problem creating command queue\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+    d_inf = clCreateBuffer(context, CL_MEM_READ_ONLY, bytes, NULL, &err);
+    if(err != CL_SUCCESS) {
+        perror("Problem creating buffer d_inf.\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+
+
+    d_outf = clCreateBuffer(context, CL_MEM_READ_WRITE, lbytes, NULL, &err);
+    if(err != CL_SUCCESS) {
+        perror("Problem creating buffer d_outf.\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+
+    err = clEnqueueWriteBuffer(queue, d_inf, CL_TRUE, 0, bytes, infifo, 0, NULL, NULL);
+    if(err != CL_SUCCESS) {
+        printf("Error Code: %d\n", err);
+        perror("Problem enqueing writes.\n");
+        return;
+    }
+
+    err  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &d_inf);
+    err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &d_outf);
+    err |= clSetKernelArg(kernel, 2, sizeof(unsigned int), &no_of_blocks);
+    if(err != CL_SUCCESS) {
+        perror("Problem setting arguments\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+    err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_size,
+            &local_size, 0, NULL, NULL);
+    if(err != CL_SUCCESS) {
+        perror("Problem enqueing kernel.\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+
+    err = clFinish(queue);
+    if(err != CL_SUCCESS) {
+        perror("Problem with CL Finish.\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+    //FIFO *out = (FIFO*) malloc(sizeof(FIFO)*no_of_blocks);
+    err = clEnqueueReadBuffer(queue, d_outf, CL_TRUE, 0, lbytes, last, 0, NULL,NULL);
+    //printf("Err: %d\n",err);
     if(err != CL_SUCCESS) {
         perror("Problem reading from buffer.\n");
         printf("Error Code: %d\n", err);
