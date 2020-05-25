@@ -1,0 +1,67 @@
+CUDA:
+
+world192.txt(2.4MB) - 0.202 secs
+dictionorty(3.1 MB) - 0.057 secs
+bible.txt(3.9 MB)   - 0.269 secs
+E.coli(4.5 MB)      - 1.098 secs 
+big(6.3 MB)         - 4.187 secs
+
+Serial - Block Size 4096
+
+world192.txt(2.4MB) - 0.146 secs
+dictionorty(3.1 MB) - 0.180 secs
+bible.txt(3.9 MB)   - 0.275 secs
+E.coli(4.5 MB)      - 0.454 secs 
+big(6.3 MB)         - 0.393 secs
+
+--------------------------------
+
+world192.txt(2.4MB) - 0.011 secs
+dictionorty(3.1 MB) - 0.015 secs
+bible.txt(3.9 MB)   - 0.017 secs
+E.coli(4.5 MB)      - 0.019 secs 
+big(6.3 MB)         - 0.025 secs
+
+
+OpenCL - Block Size 4096 
+
+world192.txt(2.4MB) - 0.374 secs - Local Size: 64
+                    - 0.408 secs - Local Size: 512
+
+dictionorty(3.1 MB) - 0.430 secs - Local Size: 64
+                    - 0.457 secs - Local Size: 512
+
+bible.txt(3.9 MB)   - 0.615 secs - Local Size: 64
+                    - 0.643 secs - Local Size: 512
+
+E.coli(4.5 MB)      - 0.910 secs - Local Size: 64 
+                    - 0.938 secs - Local Size: 512
+
+big(6.3 MB)         - 0.794 secs - Local Size: 64
+                    - 0.805 secs - Local Size: 512
+
+----------------------------------------------------
+
+With -O3 optimiztion
+     BLOCK_SIZE: 4096
+     Local Size: 64
+
+world192.txt(2.4MB) - 0.300 secs - Local Size: 64
+dictionorty(3.1 MB) - 0.340 secs - Local Size: 64
+bible.txt(3.9 MB)   - 0.458 secs - Local Size: 64
+E.coli(4.5 MB)      - 0.642 secs - Local Size: 64 
+big(6.3 MB)         - 0.600 secs - Local Size: 64
+
+----------------------------------------------------
+
+OpenCL Reverse.
+
+
+world192.txt(2.4MB) - 0.093 secs - Local Size: 64
+dictionorty(3.1 MB) - 0.095 secs - Local Size: 64
+bible.txt(3.9 MB)   - 0.103 secs - Local Size: 64
+E.coli(4.5 MB)      - 0.105 secs - Local Size: 64 
+big(6.3 MB)         - 0.119 secs - Local Size: 64
+
+
+

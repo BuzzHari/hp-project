@@ -3,7 +3,7 @@
 #include <string.h>
 #include "optlist.h"
 #include "bwtcl.h"
-#include <time.h>
+#include <sys/time.h>
 /***************************************************************************
 *                               PROTOTYPES
 ***************************************************************************/
@@ -155,18 +155,35 @@ int main(int argc, char *argv[])
         exit (EXIT_FAILURE);
     }
 
+    struct timeval start, end;
+    double time_taken;
+
     /* we have valid parameters encode or decode */
     if (encode)
     {
-        clock_t t;
-        t = clock();
+        gettimeofday(&start, 0);
         BwtTransform(inFile, outFile);
-        t = clock() - t;
-        printf("Time Taken: %f\n", (double)(t)/CLOCKS_PER_SEC);
+        gettimeofday(&end, 0);
+
+        time_taken = (end.tv_sec - start.tv_sec) * 1e6;
+        time_taken = (time_taken + (end.tv_usec -
+                           start.tv_usec)) * 1e-6;
+
+        printf("\tAll the time took:\t%f \n", time_taken);
+
     }
     else
     {
-        //BWReverseXform(inFile, outFile, method);
+
+        gettimeofday(&start, 0);
+        BwtReverse(inFile, outFile);
+        gettimeofday(&end, 0);
+        
+        time_taken = (end.tv_sec - start.tv_sec) * 1e6;
+        time_taken = (time_taken + (end.tv_usec -
+                           start.tv_usec)) * 1e-6;
+
+        printf("\tAll the time took:\t%f \n", time_taken);
     }
 
     fclose(inFile);

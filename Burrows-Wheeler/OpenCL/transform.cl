@@ -2,8 +2,8 @@
 
 
 //#define BLOCK_SIZE 1048576
-//#define BLOCK_SIZE 4096 
 #define BLOCK_SIZE 4096 
+//#define BLOCK_SIZE 102400*5
 //#define BLOCK_SIZE 2048 
 //#define BLOCK_SIZE 16 // 16 bytes for testing purpose. 
 #define UCHAR_MAX 255

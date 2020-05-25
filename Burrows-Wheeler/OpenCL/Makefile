@@ -1,22 +1,22 @@
 all: sample
 
-run: 
-	./sample -c -i $(FILE) -o out.txt
+run-transform: 
+	./sample -c -i $(FILE) -o out
 
-gdb-run: 
-	gdb ./sample -c -i ../../testdata/world192.txt 
+run-reverse: 
+	./sample -d -i out -o rev.txt
 
 sample: sample.o bwtcl.o optlist.o
-	gcc -g -o sample $^ -lOpenCL -lm
+	gcc -O3 -g -o sample $^ -lOpenCL -lm
 
 sample.o: sample.c bwtcl.h optlist.h
-	gcc -c -g $<
+	gcc -O3 -c -g $<
 
 bwtcl.o: bwtcl.c transform.cl
-	gcc -c -g $< -lOpenCL -lm 
+	gcc -O3 -c -g $< -lOpenCL -lm 
 
 optlist.o: optlist.c optlist.h
-	gcc -c -g $<
+	gcc -O3 -c -g $<
 
 clean:
 	rm -f *.o

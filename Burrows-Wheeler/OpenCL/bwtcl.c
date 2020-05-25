@@ -12,12 +12,12 @@
 //#define BLOCK_SIZE 1048576 // 1MB
 #define BLOCK_SIZE 4096 // 4KB 
 //#define BLOCK_SIZE 2048 // 4KB 
-//#define BLOCK_SIZE 102400// 4KB 
+//#define BLOCK_SIZE 102400*5// 4KB 
 //#define BLOCK_SIZE 16 // 16 bytes. For testing. 
 #define MIN_SIZE 1048576
 #define MAX_SOURCE_SIZE 1024*1024 
 
-#define LOCAL_SIZE 512 
+#define LOCAL_SIZE 64 
 
 #define Wrap(value, limit) (((value) < (limit)) ? (value) : ((value) - (limit)))
 
@@ -121,7 +121,7 @@ int BwtTransform(FILE *fpIn, FILE *fpOut) {
 
     fseek(fpIn, 0, SEEK_END);
     long total_size = ftell(fpIn);
-    printf("Total size: %ld\n", total_size);
+    //printf("Total size: %ld\n", total_size);
     fseek(fpIn, 0, SEEK_SET);
 
     /*
@@ -253,7 +253,7 @@ int BwtReverse(FILE *fpIn, FILE *fpOut) {
 
     fseek(fpIn, 0, SEEK_END);
     long total_size = ftell(fpIn);
-    printf("Total size: %ld\n", total_size);
+    //printf("Total size: %ld\n", total_size);
     fseek(fpIn, 0, SEEK_SET);
 
 
@@ -273,7 +273,7 @@ int BwtReverse(FILE *fpIn, FILE *fpOut) {
     for (i = 0; i < no_of_blocks; ++i) {
         
         infifo[i].id = i;
-        fread(&infifo[i].s0Idx, sizeof(int), 1, fpIn);
+        int ret = fread(&infifo[i].s0Idx, sizeof(int), 1, fpIn);
         //printf("s0Idx: %u", infifo[i].s0Idx);
         unsigned long int result = fread(infifo[i].block, sizeof(unsigned char), bsize, fpIn);
         //printf("Block %ld: Size Read %ld\n", i, result);
@@ -420,15 +420,15 @@ static void CallTransformKernel(cl_kernel kernel, FIFO *infifo, FIFO *outfifo, u
     cl_int err;
 
     size_t bytes = sizeof(FIFO) * no_of_blocks;
-    printf("bytes: %lu\n", sizeof(FIFO) * no_of_blocks);
+    //printf("bytes: %lu\n", sizeof(FIFO) * no_of_blocks);
 
     size_t global_size;
     //size_t local_size = 128;
     size_t local_size = LOCAL_SIZE;
-    printf("No_of_blocks: %ld\n", no_of_blocks);
+    //printf("No_of_blocks: %ld\n", no_of_blocks);
     //global_size = no_of_blocks * local_size;
     global_size = ceil((float)no_of_blocks / local_size) * local_size;
-    printf("Global Size: %lu\n", global_size);
+    //printf("Global Size: %lu\n", global_size);
     
 
     err = clGetKernelInfo(kernel,CL_KERNEL_CONTEXT, sizeof(cl_context), &context, NULL);
@@ -537,16 +537,16 @@ static void CallLastKernel(cl_kernel kernel, FIFO *infifo, LAST *last, unsigned 
 
     size_t bytes = sizeof(FIFO) * no_of_blocks;
     size_t lbytes = sizeof(LAST) * no_of_blocks;
-    printf("bytes: %lu\n", bytes);
-    printf("lbytes: %lu\n", lbytes);
+    //printf("bytes: %lu\n", bytes);
+    //printf("lbytes: %lu\n", lbytes);
     
     size_t global_size;
     size_t local_size = LOCAL_SIZE;
     //size_t local_size = 1;
-    printf("No_of_blocks: %ld\n", no_of_blocks);
+    //printf("No_of_blocks: %ld\n", no_of_blocks);
     //global_size = no_of_blocks * local_size;
     global_size = ceil((float)no_of_blocks / local_size) * local_size;
-    printf("Global Size: %lu\n", global_size);
+    //printf("Global Size: %lu\n", global_size);
     
 
     err = clGetKernelInfo(kernel,CL_KERNEL_CONTEXT, sizeof(cl_context), &context, NULL);
@@ -657,15 +657,15 @@ static void CallReverseKernel(cl_kernel kernel, r_FIFO *infifo, unsigned long in
     cl_int err;
 
     size_t bytes = sizeof(r_FIFO) * no_of_blocks;
-    printf("bytes: %lu\n", bytes);
+    //printf("bytes: %lu\n", bytes);
 
     size_t global_size;
     //size_t local_size = 128;
     size_t local_size = LOCAL_SIZE;
-    printf("No_of_blocks: %ld\n", no_of_blocks);
+    //printf("No_of_blocks: %ld\n", no_of_blocks);
     //global_size = no_of_blocks * local_size;
     global_size = ceil((float)no_of_blocks / local_size) * local_size;
-    printf("Global Size: %lu\n", global_size);
+    //printf("Global Size: %lu\n", global_size);
     
 
     err = clGetKernelInfo(kernel,CL_KERNEL_CONTEXT, sizeof(cl_context), &context, NULL);
