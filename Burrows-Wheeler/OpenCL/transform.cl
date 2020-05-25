@@ -3,15 +3,15 @@
 
 //#define BLOCK_SIZE 1048576
 //#define BLOCK_SIZE 4096 
-//#define BLOCK_SIZE 4096 
-#define BLOCK_SIZE 2048 
+#define BLOCK_SIZE 4096 
+//#define BLOCK_SIZE 2048 
 //#define BLOCK_SIZE 16 // 16 bytes for testing purpose. 
 #define UCHAR_MAX 255
 #define Wrap(value, limit) (((value) < (limit)) ? (value) : ((value) - (limit)))
 
 struct __attribute__((packed)) FIFO {
-    int id;
-    int len;
+    unsigned long int id;
+    unsigned long int len;
     unsigned int rotationIdx[BLOCK_SIZE];
     unsigned int v[BLOCK_SIZE];
     char block[BLOCK_SIZE];
@@ -19,25 +19,24 @@ struct __attribute__((packed)) FIFO {
 
 
 struct __attribute__((packed)) LAST {
-    int s0Idx;
+    unsigned int s0Idx;
     unsigned char last[BLOCK_SIZE];
 };
 
 __kernel void BwTransform(__global struct FIFO *inf,
-                          const unsigned int num_of_blocks)
+                          const unsigned long int num_of_blocks)
 {
     //Note to self: Kernel shall fail if the input file exceds over 100MB.
     
     //Getting ID of one of the data blocks. 
-    int gid = get_global_id(0);
+    unsigned long int gid = get_global_id(0);
     //int oset = id * BLOCK_SIZE;
     //Idea is to transform this block and store it back.
     if(gid < num_of_blocks) {
         //printf("ID: %d\n", gid); 
         //printf("%c\n", inf[gid].block[0]);
         
-        __private unsigned int i, j, k; 
-        int s0Idx;
+        __private unsigned long int i, j, k; 
         unsigned int counters[256] = { 0 };
         unsigned int offsetTable[256] = { 0 };
 
@@ -101,7 +100,7 @@ __kernel void BwTransform(__global struct FIFO *inf,
     
 __kernel void BwLast(__global struct FIFO *inf,
                      __global struct LAST *last,
-                    const unsigned int num_of_blocks) 
+                    const unsigned long int num_of_blocks) 
 {
     
     int gid = get_global_id(0);

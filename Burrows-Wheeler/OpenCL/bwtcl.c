@@ -10,8 +10,8 @@
 
 
 //#define BLOCK_SIZE 1048576 // 1MB
-//#define BLOCK_SIZE 4096 // 4KB 
-#define BLOCK_SIZE 2048 // 4KB 
+#define BLOCK_SIZE 4096 // 4KB 
+//#define BLOCK_SIZE 2048 // 4KB 
 //#define BLOCK_SIZE 102400// 4KB 
 //#define BLOCK_SIZE 16 // 16 bytes. For testing. 
 #define MIN_SIZE 1048576
@@ -24,15 +24,26 @@
 
 
 typedef struct __attribute__((packed)) FIFO {
-    int id;
-    int len;
+    unsigned long int id;
+    unsigned long int len;
     unsigned int rotationIdx[BLOCK_SIZE];
     unsigned int v[BLOCK_SIZE];
     char block[BLOCK_SIZE];
 } FIFO;
 
+
+typedef struct __attribute__((packed)) r_FIFO {
+    unsigned long int id;
+
+    unsigned int s0Idx;
+    unsigned long int len;
+    unsigned int pred[BLOCK_SIZE];
+    unsigned char unrotated[BLOCK_SIZE];
+    char block[BLOCK_SIZE];
+} r_FIFO;
+
 typedef struct __attribute__((packed)) LAST{
-    int s0Idx;
+    unsigned int s0Idx;
     unsigned char last[BLOCK_SIZE];
 } LAST;
 
@@ -43,8 +54,8 @@ static int ComparePresorted(const void *s1, const void *s2, void *blck)
     FIFO *block;
     block = (FIFO*) blck;
     unsigned int offset1, offset2;
-    unsigned int i;
-    unsigned int blockSize = block->len;
+    unsigned long int i;
+    unsigned long int blockSize = block->len;
     /***********************************************************************
     * Compare 1 character at a time until there's difference or the end of
     * the block is reached.  Since we're only sorting strings that already
@@ -89,11 +100,13 @@ static int ComparePresorted(const void *s1, const void *s2, void *blck)
 }
 
 
-static void CallTransformKernel(cl_kernel kernel, FIFO *infifo, FIFO *outfifo, int no_of_blocks);
+static void CallTransformKernel(cl_kernel kernel, FIFO *infifo, FIFO *outfifo, unsigned long int no_of_blocks);
 
 static cl_kernel CreateKernel(char* cl_filename, char* cl_kernelname);
 
-static void CallLastKernel(cl_kernel kernel, FIFO *outfifo, LAST *last, int no_of_blocks); 
+static void CallLastKernel(cl_kernel kernel, FIFO *outfifo, LAST *last, unsigned long int no_of_blocks); 
+
+static void CallReverseKernel(cl_kernel, r_FIFO *infifo, unsigned long int no_of_blocks);
 
 int BwtTransform(FILE *fpIn, FILE *fpOut) {
 
@@ -118,8 +131,8 @@ int BwtTransform(FILE *fpIn, FILE *fpOut) {
      *}
      */
 
-    int bsize = BLOCK_SIZE;
-    int no_of_blocks = ceil((double)total_size / bsize);
+    unsigned long int bsize = BLOCK_SIZE;
+    unsigned long int no_of_blocks = ceil((double)total_size / bsize);
     //int no_of_blocks = 100;
     infifo = (FIFO*) malloc(sizeof(FIFO)*no_of_blocks);
     if(!infifo) {
@@ -138,12 +151,14 @@ int BwtTransform(FILE *fpIn, FILE *fpOut) {
         printf("Last: Malloc Error\n");
         exit(0);
     }
-   
-    for (int i = 0; i < no_of_blocks; ++i) {
+    
+    unsigned long int i,j,k,l;
+    
+    for (i = 0; i < no_of_blocks; ++i) {
         
         infifo[i].id = i;
-        int result = fread(infifo[i].block, 1, bsize, fpIn);
-        //printf("Block %d: Size Read %d\n", i, result);
+        unsigned long int result = fread(infifo[i].block, 1, bsize, fpIn);
+        //printf("Block %ld: Size Read %ld\n", i, result);
         //printf("Text: %c\n", infifo[i].block[14]);
         if(result != bsize && i != no_of_blocks-1){
             printf("Reading error\n");
@@ -173,12 +188,11 @@ int BwtTransform(FILE *fpIn, FILE *fpOut) {
     // Not required anymore.
     free(infifo); 
 
-    unsigned int i,j,k,l;
     for(l = 0; l < no_of_blocks; ++l) {
-        unsigned int blockSize = outfifo[l].len;
+        unsigned long int blockSize = outfifo[l].len;
         for(i = 0, k = 0; (i <= UCHAR_MAX) && (k < (blockSize -1)); ++i) {
             for (j = 0; (j <= UCHAR_MAX) && (k < (blockSize - 1)); j++) {
-                unsigned int first = k;
+                unsigned long int first = k;
 
                /* count strings starting with ij */
                 while ((i == outfifo[l].block[outfifo[l].rotationIdx[k]]) &&
@@ -224,6 +238,72 @@ int BwtTransform(FILE *fpIn, FILE *fpOut) {
 
     free(outfifo);
     free(last);
+    return 0;
+}
+
+
+int BwtReverse(FILE *fpIn, FILE *fpOut) {
+
+    if( fpIn == NULL || fpOut == NULL) {
+        printf("No file\n");
+        exit(1);
+    }
+
+    r_FIFO *infifo;
+
+    fseek(fpIn, 0, SEEK_END);
+    long total_size = ftell(fpIn);
+    printf("Total size: %ld\n", total_size);
+    fseek(fpIn, 0, SEEK_SET);
+
+
+    unsigned long int bsize = BLOCK_SIZE;
+    unsigned long int no_of_blocks = ceil((double)total_size / bsize);
+    //int no_of_blocks = 100;
+    infifo = (r_FIFO*) malloc(sizeof(r_FIFO)*no_of_blocks);
+    if(!infifo) {
+        printf("Infifo: Malloc Error\n");
+        exit(0);
+    }
+
+        
+    
+    unsigned long int i,j,k,l;
+    
+    for (i = 0; i < no_of_blocks; ++i) {
+        
+        infifo[i].id = i;
+        fread(&infifo[i].s0Idx, sizeof(int), 1, fpIn);
+        //printf("s0Idx: %u", infifo[i].s0Idx);
+        unsigned long int result = fread(infifo[i].block, sizeof(unsigned char), bsize, fpIn);
+        //printf("Block %ld: Size Read %ld\n", i, result);
+        //printf("Text: %s\n", infifo[i].block);
+        /*if(result != bsize && i != no_of_blocks-1){*/
+            /*printf("Reading error\n");*/
+            /*free(infifo);*/
+            /*exit(3);*/
+        /*}*/
+        infifo[i].len = result;
+    }
+
+    cl_kernel kernel = CreateKernel("reverse.cl", "BwtReverse");
+
+    if(!kernel) {
+        printf("Something went wrong in creating the kernel\n");
+        exit(0);
+    }
+
+    CallReverseKernel(kernel, infifo, no_of_blocks); 
+
+    for (int i = 0; i < no_of_blocks; ++i) {
+        //printf("s0Idx: %d\n", last[i].s0Idx);
+        //for (int j=0; j < outfifo[i].len; ++j)
+            //printf("last[%d]: %c\n", j, last[i].last[j]);
+        
+        fwrite(infifo[i].unrotated, sizeof(unsigned char), infifo[i].len, fpOut);
+    }
+
+    free(infifo);
     return 0;
 }
 
@@ -328,7 +408,7 @@ static cl_kernel CreateKernel(char* cl_filename, char* cl_kernelname) {
 }
 
 
-static void CallTransformKernel(cl_kernel kernel, FIFO *infifo, FIFO *outfifo, int no_of_blocks) {
+static void CallTransformKernel(cl_kernel kernel, FIFO *infifo, FIFO *outfifo, unsigned long int no_of_blocks) {
     
 
     cl_mem d_inf;
@@ -345,7 +425,7 @@ static void CallTransformKernel(cl_kernel kernel, FIFO *infifo, FIFO *outfifo, i
     size_t global_size;
     //size_t local_size = 128;
     size_t local_size = LOCAL_SIZE;
-    printf("No_of_blocks: %d\n", no_of_blocks);
+    printf("No_of_blocks: %ld\n", no_of_blocks);
     //global_size = no_of_blocks * local_size;
     global_size = ceil((float)no_of_blocks / local_size) * local_size;
     printf("Global Size: %lu\n", global_size);
@@ -401,7 +481,7 @@ static void CallTransformKernel(cl_kernel kernel, FIFO *infifo, FIFO *outfifo, i
         return;
     }
     
-    err |= clSetKernelArg(kernel, 1, sizeof(unsigned int), &no_of_blocks);
+    err |= clSetKernelArg(kernel, 1, sizeof(unsigned long int), &no_of_blocks);
     if(err != CL_SUCCESS) {
         perror("Problem setting arguments\n");
         printf("Error Code: %d\n", err);
@@ -444,7 +524,7 @@ static void CallTransformKernel(cl_kernel kernel, FIFO *infifo, FIFO *outfifo, i
 
 
 
-static void CallLastKernel(cl_kernel kernel, FIFO *infifo, LAST *last, int no_of_blocks) {
+static void CallLastKernel(cl_kernel kernel, FIFO *infifo, LAST *last, unsigned long int no_of_blocks) {
     
     cl_mem d_inf;
     cl_mem d_outf;
@@ -463,7 +543,7 @@ static void CallLastKernel(cl_kernel kernel, FIFO *infifo, LAST *last, int no_of
     size_t global_size;
     size_t local_size = LOCAL_SIZE;
     //size_t local_size = 1;
-    printf("No_of_blocks: %d\n", no_of_blocks);
+    printf("No_of_blocks: %ld\n", no_of_blocks);
     //global_size = no_of_blocks * local_size;
     global_size = ceil((float)no_of_blocks / local_size) * local_size;
     printf("Global Size: %lu\n", global_size);
@@ -522,7 +602,7 @@ static void CallLastKernel(cl_kernel kernel, FIFO *infifo, LAST *last, int no_of
 
     err  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &d_inf);
     err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &d_outf);
-    err |= clSetKernelArg(kernel, 2, sizeof(unsigned int), &no_of_blocks);
+    err |= clSetKernelArg(kernel, 2, sizeof(unsigned long int), &no_of_blocks);
     if(err != CL_SUCCESS) {
         perror("Problem setting arguments\n");
         printf("Error Code: %d\n", err);
@@ -558,6 +638,121 @@ static void CallLastKernel(cl_kernel kernel, FIFO *infifo, LAST *last, int no_of
 
     clReleaseMemObject(d_inf);
     clReleaseMemObject(d_outf);
+    clReleaseProgram(program);
+    clReleaseKernel(kernel);
+    clReleaseCommandQueue(queue);
+    clReleaseContext(context);
+}
+
+
+static void CallReverseKernel(cl_kernel kernel, r_FIFO *infifo, unsigned long int no_of_blocks) {
+    
+
+    cl_mem d_inf;
+
+    cl_context context;
+    cl_command_queue queue;
+    cl_program program;
+    cl_device_id device_id;
+    cl_int err;
+
+    size_t bytes = sizeof(r_FIFO) * no_of_blocks;
+    printf("bytes: %lu\n", bytes);
+
+    size_t global_size;
+    //size_t local_size = 128;
+    size_t local_size = LOCAL_SIZE;
+    printf("No_of_blocks: %ld\n", no_of_blocks);
+    //global_size = no_of_blocks * local_size;
+    global_size = ceil((float)no_of_blocks / local_size) * local_size;
+    printf("Global Size: %lu\n", global_size);
+    
+
+    err = clGetKernelInfo(kernel,CL_KERNEL_CONTEXT, sizeof(cl_context), &context, NULL);
+    if(err != CL_SUCCESS) {
+        perror("Problem getting context\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+
+
+    err = clGetKernelInfo(kernel,CL_KERNEL_PROGRAM, sizeof(cl_program), &program, NULL);
+    if(err != CL_SUCCESS) {
+        perror("Problem getting program\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+    err = clGetProgramInfo(program, CL_PROGRAM_DEVICES, sizeof(cl_device_id), &device_id, NULL);
+    if(err != CL_SUCCESS) {
+        perror("Problem getting deviceID\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+
+    queue = clCreateCommandQueueWithProperties(context, device_id, 0, &err);
+    if(err != CL_SUCCESS) {
+        perror("Problem creating command queue\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+    d_inf = clCreateBuffer(context, CL_MEM_READ_WRITE, bytes, NULL, &err);
+    if(err != CL_SUCCESS) {
+        perror("Problem creating buffer d_inf.\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+
+    err = clEnqueueWriteBuffer(queue, d_inf, CL_TRUE, 0, bytes, infifo, 0, NULL, NULL);
+    if(err != CL_SUCCESS) {
+        printf("Error Code: %d\n", err);
+        perror("Problem enqueing writes.\n");
+        return;
+    }
+
+    err  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &d_inf);
+    if(err != CL_SUCCESS) {
+        perror("Problem setting arguments: 1\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+    err |= clSetKernelArg(kernel, 1, sizeof(unsigned long int), &no_of_blocks);
+    if(err != CL_SUCCESS) {
+        perror("Problem setting arguments\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+    err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_size,
+            &local_size, 0, NULL, NULL);
+    if(err != CL_SUCCESS) {
+        perror("Problem enqueing kernel.\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+
+    err = clFinish(queue);
+    if(err != CL_SUCCESS) {
+        perror("Problem with CL Finish.\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+    //FIFO *out = (FIFO*) malloc(sizeof(FIFO)*no_of_blocks);
+    err = clEnqueueReadBuffer(queue, d_inf, CL_TRUE, 0, bytes, infifo, 0, NULL,NULL);
+    //printf("Err: %d\n",err);
+    if(err != CL_SUCCESS) {
+        perror("Problem reading from buffer.\n");
+        printf("Error Code: %d\n", err);
+        return;
+    }
+    
+
+    // Now to quick sort on this data in main. 
+
+    clReleaseMemObject(d_inf);
     clReleaseProgram(program);
     clReleaseKernel(kernel);
     clReleaseCommandQueue(queue);
