@@ -28,7 +28,7 @@ typedef struct __attribute__((packed)) FIFO {
     unsigned long int len;
     unsigned int rotationIdx[BLOCK_SIZE];
     unsigned int v[BLOCK_SIZE];
-    char block[BLOCK_SIZE];
+    unsigned char block[BLOCK_SIZE];
 } FIFO;
 
 
@@ -39,7 +39,7 @@ typedef struct __attribute__((packed)) r_FIFO {
     unsigned long int len;
     unsigned int pred[BLOCK_SIZE];
     unsigned char unrotated[BLOCK_SIZE];
-    char block[BLOCK_SIZE];
+    unsigned char block[BLOCK_SIZE];
 } r_FIFO;
 
 typedef struct __attribute__((packed)) LAST{

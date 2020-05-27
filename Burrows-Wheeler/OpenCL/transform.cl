@@ -14,7 +14,7 @@ struct __attribute__((packed)) FIFO {
     unsigned long int len;
     unsigned int rotationIdx[BLOCK_SIZE];
     unsigned int v[BLOCK_SIZE];
-    char block[BLOCK_SIZE];
+    unsigned char block[BLOCK_SIZE];
 };
 
 
