@@ -17,5 +17,7 @@ The Serial and CUDA implementations were borrowed from the repositories as menti
 * RLE:
   * Serial and CUDA: https://github.com/Erkaman/parle-cuda
   
-  Using the above repositories as a refernece and for benchmarking, we implemented OpenCL version of these algorithms.
+* Using the above repositories as a refernece and for benchmarking, we implemented OpenCL version of these algorithms.
   You could see our results in the report.
+  
+* To run the above codes, set-up Cuda and OpenCL environment according to your system specs. And then using the makefiles provide, you could execute these codes.
